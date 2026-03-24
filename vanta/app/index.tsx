@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { getHasCompletedOnboarding } from "@/services/onboardingStorage";
+import { hasAuthSession } from "@/services/authStorage";
 
 export default function Splash() {
   const logoOpacity = useRef(new Animated.Value(0)).current;
@@ -41,8 +42,9 @@ export default function Splash() {
 
     const navigateAfterBoot = async () => {
       const minimumDelay = new Promise((resolve) => setTimeout(resolve, 1600));
-      const [hasCompletedOnboarding] = await Promise.all([
+      const [hasCompletedOnboarding, authenticated] = await Promise.all([
         getHasCompletedOnboarding(),
+        hasAuthSession(),
         minimumDelay,
       ]);
 
@@ -50,7 +52,12 @@ export default function Splash() {
         return;
       }
 
-      router.replace(hasCompletedOnboarding ? "/home" : "/onboarding");
+      if (!hasCompletedOnboarding) {
+        router.replace("/onboarding");
+        return;
+      }
+
+      router.replace(authenticated ? "/home" : "/auth");
     };
 
     void navigateAfterBoot();

@@ -10,10 +10,8 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  getHasCompletedOnboarding,
-  setHasCompletedOnboarding,
-} from "@/services/onboardingStorage";
+import { getHasCompletedOnboarding } from "@/services/onboardingStorage";
+import { hasAuthSession } from "@/services/authStorage";
 
 type OnboardingSlide = {
   id: string;
@@ -68,9 +66,10 @@ export default function Onboarding() {
 
     const checkCompletionState = async () => {
       const hasCompletedOnboarding = await getHasCompletedOnboarding();
+      const authenticated = await hasAuthSession();
 
       if (isMounted && hasCompletedOnboarding) {
-        router.replace("/home");
+        router.replace(authenticated ? "/home" : "/auth");
       }
     };
 
@@ -100,8 +99,7 @@ export default function Onboarding() {
   };
 
   const handleStart = async () => {
-    await setHasCompletedOnboarding(true);
-    router.replace("/home");
+    router.push("/auth");
   };
 
   const renderSlide: ListRenderItem<OnboardingSlide> = ({ item }) => {
