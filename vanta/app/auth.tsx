@@ -16,6 +16,7 @@ import { saveAuthSession } from "@/services/authStorage";
 import { setHasCompletedOnboarding } from "@/services/onboardingStorage";
 
 type AuthMode = "login" | "register";
+type FocusField = "name" | "email" | "password" | "confirmPassword" | null;
 
 const EMAIL_REGEX = /\S+@\S+\.\S+/;
 
@@ -29,6 +30,7 @@ export default function AuthScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [focusedField, setFocusedField] = useState<FocusField>(null);
 
   const isRegister = mode === "register";
 
@@ -109,17 +111,26 @@ export default function AuthScreen() {
         <View style={styles.form}>
           {isRegister ? (
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                focusedField === "name" && styles.inputFocused,
+              ]}
               placeholder="Name"
               placeholderTextColor="#6E6E6E"
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
+              onFocus={() => setFocusedField("name")}
+              onBlur={() => setFocusedField(null)}
+              selectionColor="#A78BFA"
             />
           ) : null}
 
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              focusedField === "email" && styles.inputFocused,
+            ]}
             placeholder="Email"
             placeholderTextColor="#6E6E6E"
             value={email}
@@ -127,27 +138,42 @@ export default function AuthScreen() {
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            onFocus={() => setFocusedField("email")}
+            onBlur={() => setFocusedField(null)}
+            selectionColor="#A78BFA"
           />
 
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              focusedField === "password" && styles.inputFocused,
+            ]}
             placeholder="Password"
             placeholderTextColor="#6E6E6E"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
             autoCapitalize="none"
+            onFocus={() => setFocusedField("password")}
+            onBlur={() => setFocusedField(null)}
+            selectionColor="#A78BFA"
           />
 
           {isRegister ? (
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                focusedField === "confirmPassword" && styles.inputFocused,
+              ]}
               placeholder="Confirm password"
               placeholderTextColor="#6E6E6E"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
               autoCapitalize="none"
+              onFocus={() => setFocusedField("confirmPassword")}
+              onBlur={() => setFocusedField(null)}
+              selectionColor="#A78BFA"
             />
           ) : null}
 
@@ -173,11 +199,17 @@ export default function AuthScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.switchButton} onPress={switchMode}>
-            <Text style={styles.switchText}>
-              {isRegister
-                ? "Already have an account? Sign in"
-                : "New here? Create account"}
-            </Text>
+            {isRegister ? (
+              <Text style={styles.switchText}>
+                Already have an account?{" "}
+                <Text style={styles.switchAction}>Sign in</Text>
+              </Text>
+            ) : (
+              <Text style={styles.switchText}>
+                New here?{" "}
+                <Text style={styles.switchAction}>Create account</Text>
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -227,6 +259,10 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 16,
   },
+  inputFocused: {
+    borderColor: "#A78BFA",
+    backgroundColor: "#141414",
+  },
   error: {
     color: "#FF7A7A",
     fontSize: 14,
@@ -253,9 +289,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: "center",
     marginBottom: 6,
+    marginTop: 4,
   },
   switchText: {
-    color: "#B0B0B0",
+    color: "#AAAAAA",
     fontSize: 14,
+    letterSpacing: 0.2,
+  },
+  switchAction: {
+    color: "#CFCFCF",
+    textDecorationLine: "underline",
+    textDecorationColor: "#AFAFAF",
   },
 });

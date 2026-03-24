@@ -12,32 +12,51 @@ import { hasAuthSession } from "@/services/authStorage";
 
 export default function Splash() {
   const logoOpacity = useRef(new Animated.Value(0)).current;
-  const logoTranslateY = useRef(new Animated.Value(10)).current;
+  const logoTranslateY = useRef(new Animated.Value(12)).current;
+  const logoScale = useRef(new Animated.Value(0.98)).current;
+
   const taglineOpacity = useRef(new Animated.Value(0)).current;
+  const taglineTranslateY = useRef(new Animated.Value(8)).current;
 
   useEffect(() => {
     let isMounted = true;
 
-    Animated.parallel([
-      Animated.timing(logoOpacity, {
-        toValue: 1,
-        duration: 700,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(logoTranslateY, {
-        toValue: 0,
-        duration: 700,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(taglineOpacity, {
-        toValue: 1,
-        duration: 550,
-        delay: 220,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(logoOpacity, {
+          toValue: 1,
+          duration: 650,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoTranslateY, {
+          toValue: 0,
+          duration: 650,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoScale, {
+          toValue: 1,
+          duration: 650,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.delay(120),
+      Animated.parallel([
+        Animated.timing(taglineOpacity, {
+          toValue: 1,
+          duration: 420,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(taglineTranslateY, {
+          toValue: 0,
+          duration: 420,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
     ]).start();
 
     const navigateAfterBoot = async () => {
@@ -48,9 +67,7 @@ export default function Splash() {
         minimumDelay,
       ]);
 
-      if (!isMounted) {
-        return;
-      }
+      if (!isMounted) return;
 
       if (!hasCompletedOnboarding) {
         router.replace("/onboarding");
@@ -65,20 +82,37 @@ export default function Splash() {
     return () => {
       isMounted = false;
     };
-  }, [logoOpacity, logoTranslateY, taglineOpacity]);
+  }, [
+    logoOpacity,
+    logoTranslateY,
+    logoScale,
+    taglineOpacity,
+    taglineTranslateY,
+  ]);
 
   return (
     <View style={styles.container}>
       <Animated.Text
         style={[
           styles.logo,
-          { opacity: logoOpacity, transform: [{ translateY: logoTranslateY }] },
+          {
+            opacity: logoOpacity,
+            transform: [{ translateY: logoTranslateY }, { scale: logoScale }],
+          },
         ]}
       >
         Vanta
       </Animated.Text>
 
-      <Animated.Text style={[styles.tagline, { opacity: taglineOpacity }]}>
+      <Animated.Text
+        style={[
+          styles.tagline,
+          {
+            opacity: taglineOpacity,
+            transform: [{ translateY: taglineTranslateY }],
+          },
+        ]}
+      >
         plan less. do more.
       </Animated.Text>
 
