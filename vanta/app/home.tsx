@@ -23,7 +23,6 @@ function formatTime(totalSeconds: number) {
 }
 
 function GrowthShape({ completedCount }: { completedCount: number }) {
-  // 30+ sessions: complex identity form
   if (completedCount >= 30) {
     return (
       <View style={styles.shapeComplexWrap}>
@@ -35,7 +34,6 @@ function GrowthShape({ completedCount }: { completedCount: number }) {
     );
   }
 
-  // 5-29 sessions: cross
   if (completedCount >= 5) {
     return (
       <View style={styles.shapeCrossWrap}>
@@ -45,7 +43,6 @@ function GrowthShape({ completedCount }: { completedCount: number }) {
     );
   }
 
-  // 0-4 sessions: dot
   return <View style={styles.shapeDot} />;
 }
 
@@ -60,12 +57,15 @@ export default function Home() {
 
   const [voidMode, setVoidMode] = useState(false);
   const [focusSeconds, setFocusSeconds] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   const timerOpacity = useRef(new Animated.Value(0)).current;
   const timerScale = useRef(new Animated.Value(0.98)).current;
   const pulseScale = useRef(new Animated.Value(1)).current;
   const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  const menuTranslateX = useRef(new Animated.Value(300)).current;
 
   useEffect(() => {
     let mounted = true;
@@ -102,7 +102,6 @@ export default function Home() {
       return;
     }
 
-    // enter animation
     Animated.parallel([
       Animated.timing(timerOpacity, {
         toValue: 1,
@@ -117,7 +116,6 @@ export default function Home() {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      // subtle pulse loop
       pulseLoopRef.current = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseScale, {
@@ -197,6 +195,7 @@ export default function Home() {
   };
 
   const handleSignOut = async () => {
+    setMenuOpen(false);
     await clearAuthSession();
     router.replace("/auth");
   };
@@ -239,8 +238,33 @@ export default function Home() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.brand}>Vanta</Text>
-      <Text style={styles.user}>{name ? `${name} · ${email}` : email}</Text>
+      <View style={styles.header}>
+        <Text style={styles.brand}>Vanta</Text>
+
+        <TouchableOpacity
+          style={styles.menuButton}
+          onPress={() => setMenuOpen((prev) => !prev)}
+        >
+          <View style={styles.menuLine} />
+          <View style={styles.menuLine} />
+          <View style={styles.menuLine} />
+        </TouchableOpacity>
+      </View>
+
+      {menuOpen && (
+        <View style={styles.menuPanel}>
+          <Text style={styles.menuLabel}>Signed in as</Text>
+          <Text style={styles.menuUser}>{name || "User"}</Text>
+          <Text style={styles.menuEmail}>{email}</Text>
+
+          <TouchableOpacity
+            style={styles.menuSignOutButton}
+            onPress={handleSignOut}
+          >
+            <Text style={styles.menuSignOutText}>Sign out</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>One Task Rule</Text>
@@ -292,10 +316,6 @@ export default function Home() {
           Day 1: dot · Day 5: line · Day 30: form
         </Text>
       </View>
-
-      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-        <Text style={styles.signOutText}>Sign out</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -307,17 +327,72 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 68,
   },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
   brand: {
     color: "#FFFFFF",
     fontSize: 28,
     fontWeight: "700",
     letterSpacing: 1.2,
   },
-  user: {
-    color: "#8D8D8D",
-    marginTop: 6,
-    marginBottom: 18,
+
+  menuButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#2C2C2C",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
   },
+  menuLine: {
+    width: 16,
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: "#EAEAEA",
+  },
+  menuPanel: {
+    backgroundColor: "#0F0F10",
+    borderColor: "rgba(255,255,255,0.06)",
+    borderWidth: 0.8,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+  },
+  menuLabel: {
+    color: "#8D8D8D",
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  menuUser: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  menuEmail: {
+    color: "#B1B1B1",
+    marginTop: 2,
+    marginBottom: 12,
+    fontSize: 13,
+  },
+  menuSignOutButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#2C2C2C",
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  menuSignOutText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+
   card: {
     backgroundColor: "#0F0F10",
     borderColor: "rgba(255,255,255,0.06)",
@@ -325,8 +400,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     marginBottom: 12,
-
-    // premium soft depth
     shadowColor: "#000",
     shadowOpacity: 0.28,
     shadowRadius: 20,
@@ -477,21 +550,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 6,
     fontSize: 12,
-  },
-
-  signOutButton: {
-    marginTop: "auto",
-    marginBottom: 26,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#2C2C2C",
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  signOutText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "500",
   },
 
   voidContainer: {
