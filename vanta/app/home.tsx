@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   AppState,
   AppStateStatus,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -21,6 +22,8 @@ function formatTime(totalSeconds: number) {
   const ss = (totalSeconds % 60).toString().padStart(2, "0");
   return `${mm}:${ss}`;
 }
+
+const FOCUS_MINUTES_OPTIONS = [5, 10, 15, 20, 25, 30, 40, 50, 60];
 
 function GrowthShape({ completedCount }: { completedCount: number }) {
   if (completedCount >= 30) {
@@ -56,7 +59,8 @@ export default function Home() {
   const [completedCount, setCompletedCount] = useState(0);
 
   const [voidMode, setVoidMode] = useState(false);
-  const [focusSeconds, setFocusSeconds] = useState(0);
+  const [focusDurationMinutes, setFocusDurationMinutes] = useState(25);
+  const [focusSeconds, setFocusSeconds] = useState(25 * 60);
   const [menuOpen, setMenuOpen] = useState(false);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
@@ -64,8 +68,6 @@ export default function Home() {
   const timerScale = useRef(new Animated.Value(0.98)).current;
   const pulseScale = useRef(new Animated.Value(1)).current;
   const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
-
-  const menuTranslateX = useRef(new Animated.Value(300)).current;
 
   useEffect(() => {
     let mounted = true;
@@ -144,12 +146,22 @@ export default function Home() {
   useEffect(() => {
     if (!voidMode) return;
 
+    if (focusSeconds <= 0) {
+      setVoidMode(false);
+      return;
+    }
+
     const timer = setInterval(() => {
-      setFocusSeconds((prev) => prev + 1);
+      setFocusSeconds((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [voidMode]);
+  }, [voidMode, focusSeconds]);
+
+  useEffect(() => {
+    if (voidMode) return;
+    setFocusSeconds(focusDurationMinutes * 60);
+  }, [focusDurationMinutes, voidMode]);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
@@ -162,12 +174,12 @@ export default function Home() {
 
       if (voidMode && leftApp) {
         setVoidMode(false);
-        setFocusSeconds(0);
+        setFocusSeconds(focusDurationMinutes * 60);
       }
     });
 
     return () => sub.remove();
-  }, [voidMode]);
+  }, [voidMode, focusDurationMinutes]);
 
   const handleSetTask = () => {
     const value = taskDraft.trim();
@@ -181,17 +193,18 @@ export default function Home() {
     setCompletedCount((prev) => prev + 1);
     setActiveTask("");
     setVoidMode(false);
-    setFocusSeconds(0);
+    setFocusSeconds(focusDurationMinutes * 60);
   };
 
   const handleEnterVoidMode = () => {
     if (!activeTask) return;
+    setFocusSeconds(focusDurationMinutes * 60);
     setVoidMode(true);
-    setFocusSeconds(0);
   };
 
   const handleExitVoidMode = () => {
     setVoidMode(false);
+    setFocusSeconds(focusDurationMinutes * 60);
   };
 
   const handleSignOut = async () => {
@@ -274,12 +287,45 @@ export default function Home() {
             <Text style={styles.activeLabel}>Current active task</Text>
             <Text style={styles.activeTask}>{activeTask}</Text>
 
+            <Text style={styles.durationLabel}>Focus duration</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.durationScrollContent}
+            >
+              {FOCUS_MINUTES_OPTIONS.map((minutes) => {
+                const selected = focusDurationMinutes === minutes;
+                return (
+                  <TouchableOpacity
+                    key={minutes}
+                    style={[
+                      styles.durationChip,
+                      selected && styles.durationChipActive,
+                    ]}
+                    onPress={() => setFocusDurationMinutes(minutes)}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[
+                        styles.durationChipText,
+                        selected && styles.durationChipTextActive,
+                      ]}
+                    >
+                      {minutes}m
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
             <View style={styles.row}>
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={handleEnterVoidMode}
               >
-                <Text style={styles.primaryBtnText}>Enter Void Mode</Text>
+                <Text style={styles.primaryBtnText}>
+                  Start {focusDurationMinutes}m Focus
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -295,12 +341,16 @@ export default function Home() {
             <TextInput
               value={taskDraft}
               onChangeText={setTaskDraft}
-              placeholder="Focus on one thing…"
+              placeholder="What deserves your full attention?"
               placeholderTextColor="#6E6E6E"
               style={styles.input}
             />
-            <TouchableOpacity style={styles.primaryBtn} onPress={handleSetTask}>
-              <Text style={styles.primaryBtnText}>Set Active Task</Text>
+            <TouchableOpacity
+              style={styles.setTaskBtn}
+              onPress={handleSetTask}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.primaryBtnText}>Start Focus Task</Text>
             </TouchableOpacity>
           </>
         )}
@@ -422,7 +472,36 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 19,
     fontWeight: "600",
-    marginBottom: 14,
+    marginBottom: 10,
+  },
+  durationLabel: {
+    color: "#8C8C8C",
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  durationScrollContent: {
+    gap: 8,
+    paddingBottom: 12,
+  },
+  durationChip: {
+    borderWidth: 1,
+    borderColor: "#343434",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: "#141414",
+  },
+  durationChipActive: {
+    backgroundColor: "#EDEDED",
+    borderColor: "#EDEDED",
+  },
+  durationChipText: {
+    color: "#B6B6B6",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  durationChipTextActive: {
+    color: "#0A0A0A",
   },
   input: {
     backgroundColor: "#151515",
@@ -448,10 +527,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flex: 1,
   },
+  setTaskBtn: {
+    backgroundColor: "#DCDCDC",
+    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#BEBEBE",
+  },
   primaryBtnText: {
     color: "#0A0A0A",
     fontWeight: "600",
     fontSize: 14,
+  },
+  primaryBtnHint: {
+    color: "#3C3C3C",
+    fontWeight: "500",
+    fontSize: 11,
+    marginTop: 2,
   },
   ghostBtn: {
     borderRadius: 12,
