@@ -1,8 +1,42 @@
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 import { AuthSession } from "@/services/authStorage";
 
-const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_URL || "http://localhost:4000"
-).replace(/\/$/, "");
+function getExpoHost(): string | null {
+  const expoConfigHost = Constants.expoConfig?.hostUri;
+  if (expoConfigHost) {
+    return expoConfigHost.split(":")[0] ?? null;
+  }
+
+  const legacyHost = (Constants.manifest as { debuggerHost?: string } | null)
+    ?.debuggerHost;
+  if (legacyHost) {
+    return legacyHost.split(":")[0] ?? null;
+  }
+
+  return null;
+}
+
+function resolveApiBaseUrl(): string {
+  const fromEnv = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "");
+  if (fromEnv) {
+    return fromEnv;
+  }
+
+  const expoHost = getExpoHost();
+  if (expoHost) {
+    return `http://${expoHost}:4000`;
+  }
+
+  // Android emulator localhost mapping fallback.
+  if (Platform.OS === "android") {
+    return "http://10.0.2.2:4000";
+  }
+
+  return "http://localhost:4000";
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 type AuthPayload = {
   email: string;
@@ -45,13 +79,21 @@ function normalizeSession(payload: unknown): AuthSession {
 }
 
 async function postAuth(path: string, body: AuthPayload): Promise<AuthSession> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error(
+      `Network request failed. Backend not reachable at ${API_BASE_URL}.`,
+    );
+  }
 
   let payload: unknown = null;
 

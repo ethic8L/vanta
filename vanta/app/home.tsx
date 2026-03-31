@@ -11,6 +11,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Vibration,
   Animated,
   Easing,
 } from "react-native";
@@ -79,6 +80,8 @@ export default function Home() {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [sessionFailed, setSessionFailed] = useState(false);
   const [failedSessionTask, setFailedSessionTask] = useState("");
+  const [streak, setStreak] = useState(0);
+  const [dailyFocusMinutes, setDailyFocusMinutes] = useState(0);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const voidModeStartTimeRef = useRef<number | null>(null);
 
@@ -213,6 +216,57 @@ export default function Home() {
 
   useEffect(() => {
     void saveSessions(sessions);
+
+    const today = new Date().toISOString().split("T")[0];
+    let todayMinutes = 0;
+    let consecutive = 0;
+
+    sessions.forEach((session) => {
+      const sessionDate = new Date(session.timestamp)
+        .toISOString()
+        .split("T")[0];
+      if (sessionDate === today && session.success) {
+        todayMinutes += session.durationMinutes;
+      }
+    });
+
+    setDailyFocusMinutes(todayMinutes);
+
+    const sortedSessions = [...sessions].sort(
+      (a, b) => b.timestamp - a.timestamp,
+    );
+    let currentDate = today;
+    for (const session of sortedSessions) {
+      if (!session.success) continue;
+
+      const sessionDate = new Date(session.timestamp)
+        .toISOString()
+        .split("T")[0];
+      const expectedDate = new Date(
+        new Date(currentDate).getTime() - consecutive * 24 * 60 * 60 * 1000,
+      )
+        .toISOString()
+        .split("T")[0];
+
+      if (sessionDate === expectedDate) {
+        consecutive++;
+        currentDate = sessionDate;
+      } else {
+        break;
+      }
+    }
+
+    if (sortedSessions.length > 0) {
+      const lastSession = sortedSessions[0];
+      const lastSessionDate = new Date(lastSession.timestamp)
+        .toISOString()
+        .split("T")[0];
+      if (lastSessionDate !== today) {
+        consecutive = 0;
+      }
+    }
+
+    setStreak(consecutive);
   }, [sessions]);
 
   useEffect(() => {
@@ -273,9 +327,11 @@ export default function Home() {
     if (!activeTask) return;
     setFocusSeconds(focusDurationMinutes * 60);
     setVoidMode(true);
+    Vibration.vibrate(100);
   };
 
   const handleExitVoidMode = () => {
+    Vibration.vibrate([50, 30, 50]);
     if (focusSeconds > 0) {
       setSessionFailed(true);
       setFailedSessionTask(activeTask);
@@ -292,6 +348,8 @@ export default function Home() {
   const dismissFailedSession = () => {
     setSessionFailed(false);
     setFailedSessionTask("");
+    setActiveTask("");
+    setTaskDraft("");
   };
 
   const handleSignOut = async () => {
@@ -481,6 +539,24 @@ export default function Home() {
         </Text>
         <Text style={styles.growthHint}>
           Day 1: dot · Day 5: line · Day 30: form
+        </Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Today{`'`}s Focus</Text>
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Focus Time</Text>
+            <Text style={styles.summaryValue}>{dailyFocusMinutes}m</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Streak</Text>
+            <Text style={styles.summaryValue}>{streak}d</Text>
+          </View>
+        </View>
+        <Text style={styles.summaryMessage}>
+          You focused for {dailyFocusMinutes} minutes today.
         </Text>
       </View>
 
@@ -1017,5 +1093,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     flex: 1,
+  },
+
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  summaryItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  summaryLabel: {
+    color: "#7F7F7F",
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  summaryValue: {
+    color: "#EDEDED",
+    fontSize: 24,
+    fontWeight: "700",
+  },
+  summaryDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    marginHorizontal: 12,
+  },
+  summaryMessage: {
+    color: "#B1B1B1",
+    fontSize: 13,
+    textAlign: "center",
   },
 });
