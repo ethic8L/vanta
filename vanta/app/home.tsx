@@ -1,9 +1,12 @@
 import { router } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
+import * as Haptics from "expo-haptics";
 import {
   ActivityIndicator,
   AppState,
   AppStateStatus,
+  PanResponder,
+  PanResponderGestureState,
   Modal,
   ScrollView,
   StyleSheet,
@@ -14,12 +17,16 @@ import {
   Vibration,
   Animated,
   Easing,
+  TouchableOpacityProps,
 } from "react-native";
 import {
   clearAuthSession,
+  getCompletedTasks,
   getAuthUser,
   getSessions,
+  saveCompletedTasks,
   saveSessions,
+  type CompletedTaskRecord,
   type SessionRecord,
 } from "@/services/authStorage";
 
@@ -31,12 +38,233 @@ function formatTime(totalSeconds: number) {
   return `${mm}:${ss}`;
 }
 
-const FOCUS_MINUTES_OPTIONS = [5, 10, 15, 20, 25, 30, 40, 50, 60];
+const FOCUS_MIN_MINUTES = 1;
+const FOCUS_MAX_MINUTES = 60;
+const FOCUS_STEP_MINUTES = 1;
 
-interface CompletedTask {
-  name: string;
-  status: "success" | "failed";
-  timestamp: number;
+type CompletedTask = CompletedTaskRecord;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function FocusDurationSlider({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (minutes: number) => void;
+}) {
+  const [trackWidth, setTrackWidth] = useState(0);
+  const [localValue, setLocalValue] = useState(value);
+
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  const percent =
+    (localValue - FOCUS_MIN_MINUTES) / (FOCUS_MAX_MINUTES - FOCUS_MIN_MINUTES);
+
+  const updateFromX = (x: number) => {
+    if (trackWidth <= 0) return localValue;
+
+    const clampedX = clamp(x, 0, trackWidth);
+    const rawValue =
+      FOCUS_MIN_MINUTES +
+      (clampedX / trackWidth) * (FOCUS_MAX_MINUTES - FOCUS_MIN_MINUTES);
+    const stepped =
+      Math.round(rawValue / FOCUS_STEP_MINUTES) * FOCUS_STEP_MINUTES;
+    return clamp(stepped, FOCUS_MIN_MINUTES, FOCUS_MAX_MINUTES);
+  };
+
+  return (
+    <View style={styles.sliderWrap}>
+      <View style={styles.sliderHeaderRow}>
+        <Text style={styles.sliderValue}>{value}m</Text>
+        <Text style={styles.sliderHint}>Tap or slide to adjust</Text>
+      </View>
+
+      <View
+        style={styles.sliderTrackTouchArea}
+        onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={(event) => {
+          const next = updateFromX(event.nativeEvent.locationX);
+          setLocalValue(next);
+        }}
+        onResponderMove={(event) => {
+          const next = updateFromX(event.nativeEvent.locationX);
+          setLocalValue((prev) => (prev === next ? prev : next));
+        }}
+        onResponderRelease={(event) => {
+          const next = updateFromX(event.nativeEvent.locationX);
+          setLocalValue(next);
+          onChange(next);
+        }}
+      >
+        <View style={styles.sliderTrack} />
+        <View style={[styles.sliderFill, { width: `${percent * 100}%` }]} />
+        <View style={[styles.sliderThumb, { left: `${percent * 100}%` }]} />
+      </View>
+
+      <View style={styles.sliderRangeRow}>
+        <Text style={styles.sliderRangeText}>{FOCUS_MIN_MINUTES}m</Text>
+        <Text style={styles.sliderRangeText}>{FOCUS_MAX_MINUTES}m</Text>
+      </View>
+    </View>
+  );
+}
+
+function CompletedTaskRowContent({ task }: { task: CompletedTask }) {
+  return (
+    <View style={styles.completedTaskItem}>
+      <View
+        style={[
+          styles.completedTaskBadge,
+          task.status === "failed" && styles.completedTaskBadgeFailed,
+        ]}
+      >
+        <Text
+          style={[
+            styles.completedTaskIcon,
+            task.status === "failed" && styles.completedTaskIconFailed,
+          ]}
+        >
+          {task.status === "success" ? "✓" : "✕"}
+        </Text>
+      </View>
+      <View style={styles.completedTaskContent}>
+        <View style={styles.completedTaskTopRow}>
+          <Text style={styles.completedTaskText}>{task.name}</Text>
+          <Text style={styles.completedTaskMeta}>
+            {task.status === "success" ? "Completed" : "Failed early"}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function FailedTaskSwipeRow({
+  task,
+  onDelete,
+}: {
+  task: CompletedTask;
+  onDelete: () => void;
+}) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const deleteActionOpacity = translateX.interpolate({
+    inputRange: [-100, -28, 0],
+    outputRange: [1, 0.35, 0],
+    extrapolate: "clamp",
+  });
+  const deleteActionTranslateX = translateX.interpolate({
+    inputRange: [-100, 0],
+    outputRange: [0, 8],
+    extrapolate: "clamp",
+  });
+
+  const resetPosition = () => {
+    Animated.spring(translateX, {
+      toValue: 0,
+      useNativeDriver: true,
+      speed: 30,
+      bounciness: 0,
+    }).start();
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) =>
+        Math.abs(gestureState.dx) > 6,
+      onPanResponderMove: (_, gestureState: PanResponderGestureState) => {
+        const x = Math.min(0, Math.max(-120, gestureState.dx));
+        translateX.setValue(x);
+      },
+      onPanResponderRelease: (_, gestureState: PanResponderGestureState) => {
+        if (gestureState.dx <= -72) {
+          Animated.timing(translateX, {
+            toValue: -220,
+            duration: 180,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }).start(() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onDelete();
+          });
+          return;
+        }
+        resetPosition();
+      },
+      onPanResponderTerminate: resetPosition,
+    }),
+  ).current;
+
+  return (
+    <View style={styles.swipeRowWrap}>
+      <Animated.View
+        style={[
+          styles.swipeDeleteAction,
+          {
+            opacity: deleteActionOpacity,
+            transform: [{ translateX: deleteActionTranslateX }],
+          },
+        ]}
+      >
+        <Text style={styles.swipeDeleteText}>Delete</Text>
+      </Animated.View>
+      <Animated.View
+        style={{ transform: [{ translateX }] }}
+        {...panResponder.panHandlers}
+      >
+        <CompletedTaskRowContent task={task} />
+      </Animated.View>
+    </View>
+  );
+}
+
+function ScaleButton({
+  children,
+  onPressIn,
+  onPressOut,
+  style,
+  ...rest
+}: TouchableOpacityProps & { children: ReactNode }) {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn: TouchableOpacityProps["onPressIn"] = (event) => {
+    Animated.spring(scale, {
+      toValue: 0.97,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 0,
+    }).start();
+    onPressIn?.(event);
+  };
+
+  const handlePressOut: TouchableOpacityProps["onPressOut"] = (event) => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 35,
+      bounciness: 0,
+    }).start();
+    onPressOut?.(event);
+  };
+
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <TouchableOpacity
+        {...rest}
+        style={style}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+      >
+        {children}
+      </TouchableOpacity>
+    </Animated.View>
+  );
 }
 
 function GrowthShape({ completedCount }: { completedCount: number }) {
@@ -51,13 +279,17 @@ function GrowthShape({ completedCount }: { completedCount: number }) {
     );
   }
 
-  if (completedCount >= 5) {
+  if (completedCount >= 10) {
     return (
       <View style={styles.shapeCrossWrap}>
         <View style={styles.shapeCrossH} />
         <View style={styles.shapeCrossV} />
       </View>
     );
+  }
+
+  if (completedCount >= 5) {
+    return <View style={styles.shapeLine} />;
   }
 
   return <View style={styles.shapeDot} />;
@@ -80,10 +312,15 @@ export default function Home() {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [sessionFailed, setSessionFailed] = useState(false);
   const [failedSessionTask, setFailedSessionTask] = useState("");
+  const [sessionSuccess, setSessionSuccess] = useState(false);
+  const [successSessionTask, setSuccessSessionTask] = useState("");
+  const [successSessionMinutes, setSuccessSessionMinutes] = useState(0);
   const [streak, setStreak] = useState(0);
   const [dailyFocusMinutes, setDailyFocusMinutes] = useState(0);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const voidModeStartTimeRef = useRef<number | null>(null);
+  const hasHydratedRef = useRef(false);
+  const completedListAnim = useRef(new Animated.Value(1)).current;
 
   const timerOpacity = useRef(new Animated.Value(0)).current;
   const timerScale = useRef(new Animated.Value(0.98)).current;
@@ -96,6 +333,7 @@ export default function Home() {
     const loadData = async () => {
       const user = await getAuthUser();
       const storedSessions = await getSessions();
+      const storedCompletedTasks = await getCompletedTasks();
 
       if (!mounted) return;
 
@@ -107,6 +345,11 @@ export default function Home() {
       setName(user.name || "");
       setEmail(user.email);
       setSessions(storedSessions);
+      setCompletedTasks(storedCompletedTasks);
+      setCompletedCount(
+        storedCompletedTasks.filter((task) => task.status === "success").length,
+      );
+      hasHydratedRef.current = true;
       setLoading(false);
     };
 
@@ -140,6 +383,14 @@ export default function Home() {
         };
 
         setSessions((prev) => [session, ...prev]);
+        if (isSuccess) {
+          setSessionSuccess(true);
+          setSuccessSessionTask(activeTask);
+          setSuccessSessionMinutes(focusDurationMinutes);
+          void Haptics.notificationAsync(
+            Haptics.NotificationFeedbackType.Success,
+          );
+        }
         voidModeStartTimeRef.current = null;
       }
       return;
@@ -215,6 +466,8 @@ export default function Home() {
   }, [focusDurationMinutes, voidMode]);
 
   useEffect(() => {
+    if (!hasHydratedRef.current) return;
+
     void saveSessions(sessions);
 
     const today = new Date().toISOString().split("T")[0];
@@ -270,6 +523,27 @@ export default function Home() {
   }, [sessions]);
 
   useEffect(() => {
+    if (!hasHydratedRef.current) return;
+
+    void saveCompletedTasks(completedTasks);
+    setCompletedCount(
+      completedTasks.filter((task) => task.status === "success").length,
+    );
+  }, [completedTasks]);
+
+  useEffect(() => {
+    if (completedTasks.length === 0) return;
+
+    completedListAnim.setValue(0.7);
+    Animated.timing(completedListAnim, {
+      toValue: 1,
+      duration: 260,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [completedTasks, completedListAnim]);
+
+  useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
       const prev = appStateRef.current;
       appStateRef.current = nextState;
@@ -294,6 +568,7 @@ export default function Home() {
           };
 
           setSessions((prev) => [session, ...prev]);
+          voidModeStartTimeRef.current = null;
         }
         setVoidMode(false);
         setFocusSeconds(focusDurationMinutes * 60);
@@ -312,7 +587,6 @@ export default function Home() {
 
   const handleCompleteTask = () => {
     if (!activeTask) return;
-    setCompletedCount((prev) => prev + 1);
     setCompletedTasks((prev) => [
       { name: activeTask, status: "success", timestamp: Date.now() },
       ...prev,
@@ -328,10 +602,12 @@ export default function Home() {
     setFocusSeconds(focusDurationMinutes * 60);
     setVoidMode(true);
     Vibration.vibrate(100);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const handleExitVoidMode = () => {
     Vibration.vibrate([50, 30, 50]);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     if (focusSeconds > 0) {
       setSessionFailed(true);
       setFailedSessionTask(activeTask);
@@ -352,6 +628,12 @@ export default function Home() {
     setTaskDraft("");
   };
 
+  const dismissSuccessSession = () => {
+    setSessionSuccess(false);
+    setSuccessSessionTask("");
+    setSuccessSessionMinutes(0);
+  };
+
   const handleSignOut = async () => {
     setMenuOpen(false);
     await clearAuthSession();
@@ -363,6 +645,36 @@ export default function Home() {
       <View style={styles.container}>
         <ActivityIndicator size="small" color="#8A8A8A" />
       </View>
+    );
+  }
+
+  if (sessionSuccess) {
+    return (
+      <Modal
+        visible={sessionSuccess}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={dismissSuccessSession}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.successIndicator}>
+              <Text style={styles.successIcon}>✓</Text>
+            </View>
+            <Text style={styles.successTitle}>Session Complete</Text>
+            <Text style={styles.successTask}>{`"${successSessionTask}"`}</Text>
+            <Text style={styles.successMessage}>
+              You stayed focused for {successSessionMinutes} minutes.
+            </Text>
+            <ScaleButton
+              style={styles.successDismissBtn}
+              onPress={dismissSuccessSession}
+            >
+              <Text style={styles.successDismissBtnText}>Awesome</Text>
+            </ScaleButton>
+          </View>
+        </View>
+      </Modal>
     );
   }
 
@@ -384,12 +696,12 @@ export default function Home() {
             <Text style={styles.failureMessage}>
               You exited before completing the full duration.
             </Text>
-            <TouchableOpacity
+            <ScaleButton
               style={styles.failureDismissBtn}
               onPress={dismissFailedSession}
             >
               <Text style={styles.failureDismissBtnText}>Got it</Text>
-            </TouchableOpacity>
+            </ScaleButton>
           </View>
         </View>
       </Modal>
@@ -414,218 +726,209 @@ export default function Home() {
         <Text style={styles.voidTask}>{activeTask}</Text>
         <Text style={styles.voidHint}>Leaving will reset your progress.</Text>
 
-        <TouchableOpacity
-          style={styles.voidExitButton}
-          onPress={handleExitVoidMode}
-        >
+        <ScaleButton style={styles.voidExitButton} onPress={handleExitVoidMode}>
           <Text style={styles.voidExitText}>End focus</Text>
-        </TouchableOpacity>
+        </ScaleButton>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.brand}>Vanta</Text>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={styles.header}>
+          <Text style={styles.brand}>Vanta</Text>
 
-        <TouchableOpacity
-          style={styles.menuButton}
-          onPress={() => setMenuOpen((prev) => !prev)}
-        >
-          <View style={styles.menuLine} />
-          <View style={styles.menuLine} />
-          <View style={styles.menuLine} />
-        </TouchableOpacity>
-      </View>
-
-      {menuOpen && (
-        <View style={styles.menuPanel}>
-          <Text style={styles.menuLabel}>Signed in as</Text>
-          <Text style={styles.menuUser}>{name || "User"}</Text>
-          <Text style={styles.menuEmail}>{email}</Text>
-
-          <TouchableOpacity
-            style={styles.menuSignOutButton}
-            onPress={handleSignOut}
+          <ScaleButton
+            style={styles.menuButton}
+            onPress={() => setMenuOpen((prev) => !prev)}
           >
-            <Text style={styles.menuSignOutText}>Sign out</Text>
-          </TouchableOpacity>
+            <View style={styles.menuLine} />
+            <View style={styles.menuLine} />
+            <View style={styles.menuLine} />
+          </ScaleButton>
         </View>
-      )}
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>One Task Rule</Text>
+        {menuOpen && (
+          <View style={styles.menuPanel}>
+            <Text style={styles.menuLabel}>Signed in as</Text>
+            <Text style={styles.menuUser}>{name || "User"}</Text>
+            <Text style={styles.menuEmail}>{email}</Text>
 
-        {activeTask ? (
-          <>
-            <Text style={styles.activeLabel}>Current active task</Text>
-            <Text style={styles.activeTask}>{activeTask}</Text>
-
-            <Text style={styles.durationLabel}>Focus duration</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.durationScrollContent}
+            <ScaleButton
+              style={styles.menuSignOutButton}
+              onPress={handleSignOut}
             >
-              {FOCUS_MINUTES_OPTIONS.map((minutes) => {
-                const selected = focusDurationMinutes === minutes;
-                return (
-                  <TouchableOpacity
-                    key={minutes}
+              <Text style={styles.menuSignOutText}>Sign out</Text>
+            </ScaleButton>
+          </View>
+        )}
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>One Task Rule</Text>
+
+          {activeTask ? (
+            <>
+              <Text style={styles.activeLabel}>Current active task</Text>
+              <Text style={styles.activeTask}>{activeTask}</Text>
+
+              <Text style={styles.durationLabel}>Focus duration</Text>
+              <FocusDurationSlider
+                value={focusDurationMinutes}
+                onChange={setFocusDurationMinutes}
+              />
+
+              <View style={styles.row}>
+                <ScaleButton
+                  style={styles.primaryBtn}
+                  onPress={handleEnterVoidMode}
+                >
+                  <Text style={styles.primaryBtnText}>
+                    Start {focusDurationMinutes}m Focus
+                  </Text>
+                </ScaleButton>
+
+                <ScaleButton
+                  style={styles.ghostBtn}
+                  onPress={handleCompleteTask}
+                >
+                  <Text style={styles.ghostBtnText}>Complete</Text>
+                </ScaleButton>
+              </View>
+            </>
+          ) : (
+            <>
+              <TextInput
+                value={taskDraft}
+                onChangeText={setTaskDraft}
+                placeholder="What deserves your full attention?"
+                placeholderTextColor="#6E6E6E"
+                style={styles.input}
+              />
+              <ScaleButton
+                style={styles.setTaskBtn}
+                onPress={handleSetTask}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.primaryBtnText}>Start Focus Task</Text>
+              </ScaleButton>
+            </>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Abstract Growth</Text>
+          <GrowthShape completedCount={completedCount} />
+          <Text style={styles.growthText}>
+            Completed sessions: {completedCount}
+          </Text>
+          <Text style={styles.growthHint}>
+            Day 1: dot · Day 5: line · Day 30: form
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Today{`'`}s Focus</Text>
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Focus Time</Text>
+              <Text style={styles.summaryValue}>{dailyFocusMinutes}m</Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Streak</Text>
+              <Text style={styles.summaryValue}>{streak}d</Text>
+            </View>
+          </View>
+          <Text style={styles.summaryMessage}>
+            You focused for {dailyFocusMinutes} minutes today.
+          </Text>
+        </View>
+
+        {completedTasks.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Completed Tasks</Text>
+            <Animated.View
+              style={{
+                opacity: completedListAnim,
+                transform: [
+                  {
+                    translateY: completedListAnim.interpolate({
+                      inputRange: [0.7, 1],
+                      outputRange: [6, 0],
+                    }),
+                  },
+                ],
+              }}
+            >
+              {completedTasks
+                .slice(0, 8)
+                .map((task, idx) =>
+                  task.status === "failed" ? (
+                    <FailedTaskSwipeRow
+                      key={`${task.name}-${task.timestamp}-${idx}`}
+                      task={task}
+                      onDelete={() =>
+                        setCompletedTasks((prev) =>
+                          prev.filter((_, rowIdx) => rowIdx !== idx),
+                        )
+                      }
+                    />
+                  ) : (
+                    <CompletedTaskRowContent
+                      key={`${task.name}-${task.timestamp}-${idx}`}
+                      task={task}
+                    />
+                  ),
+                )}
+            </Animated.View>
+          </View>
+        )}
+
+        {sessions.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Session History</Text>
+            {sessions.slice(0, 5).map((session) => (
+              <View key={session.id} style={styles.sessionItem}>
+                <View style={styles.sessionHeader}>
+                  <Text style={styles.sessionTask}>{session.task}</Text>
+                  <View
                     style={[
-                      styles.durationChip,
-                      selected && styles.durationChipActive,
+                      styles.sessionBadge,
+                      session.success
+                        ? styles.sessionBadgeSuccess
+                        : styles.sessionBadgeFail,
                     ]}
-                    onPress={() => setFocusDurationMinutes(minutes)}
-                    activeOpacity={0.85}
                   >
                     <Text
                       style={[
-                        styles.durationChipText,
-                        selected && styles.durationChipTextActive,
+                        styles.sessionBadgeText,
+                        session.success
+                          ? styles.sessionBadgeTextSuccess
+                          : styles.sessionBadgeTextFail,
                       ]}
                     >
-                      {minutes}m
+                      {session.success ? "✓" : "✕"}
                     </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <View style={styles.row}>
-              <TouchableOpacity
-                style={styles.primaryBtn}
-                onPress={handleEnterVoidMode}
-              >
-                <Text style={styles.primaryBtnText}>
-                  Start {focusDurationMinutes}m Focus
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.ghostBtn}
-                onPress={handleCompleteTask}
-              >
-                <Text style={styles.ghostBtnText}>Complete</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        ) : (
-          <>
-            <TextInput
-              value={taskDraft}
-              onChangeText={setTaskDraft}
-              placeholder="What deserves your full attention?"
-              placeholderTextColor="#6E6E6E"
-              style={styles.input}
-            />
-            <TouchableOpacity
-              style={styles.setTaskBtn}
-              onPress={handleSetTask}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.primaryBtnText}>Start Focus Task</Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Abstract Growth</Text>
-        <GrowthShape completedCount={completedCount} />
-        <Text style={styles.growthText}>
-          Completed sessions: {completedCount}
-        </Text>
-        <Text style={styles.growthHint}>
-          Day 1: dot · Day 5: line · Day 30: form
-        </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Today{`'`}s Focus</Text>
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Focus Time</Text>
-            <Text style={styles.summaryValue}>{dailyFocusMinutes}m</Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Streak</Text>
-            <Text style={styles.summaryValue}>{streak}d</Text>
-          </View>
-        </View>
-        <Text style={styles.summaryMessage}>
-          You focused for {dailyFocusMinutes} minutes today.
-        </Text>
-      </View>
-
-      {completedTasks.length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Completed Tasks</Text>
-          {completedTasks.slice(0, 8).map((task, idx) => (
-            <View key={`${task.name}-${idx}`} style={styles.completedTaskItem}>
-              <View
-                style={[
-                  styles.completedTaskBadge,
-                  task.status === "failed" && styles.completedTaskBadgeFailed,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.completedTaskIcon,
-                    task.status === "failed" && styles.completedTaskIconFailed,
-                  ]}
-                >
-                  {task.status === "success" ? "✓" : "✕"}
-                </Text>
-              </View>
-              <Text style={styles.completedTaskText}>{task.name}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {sessions.length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Session History</Text>
-          {sessions.slice(0, 5).map((session) => (
-            <View key={session.id} style={styles.sessionItem}>
-              <View style={styles.sessionHeader}>
-                <Text style={styles.sessionTask}>{session.task}</Text>
-                <View
-                  style={[
-                    styles.sessionBadge,
-                    session.success
-                      ? styles.sessionBadgeSuccess
-                      : styles.sessionBadgeFail,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.sessionBadgeText,
-                      session.success
-                        ? styles.sessionBadgeTextSuccess
-                        : styles.sessionBadgeTextFail,
-                    ]}
-                  >
-                    {session.success ? "✓" : "✕"}
-                  </Text>
+                  </View>
                 </View>
+                <Text style={styles.sessionMeta}>
+                  {session.durationMinutes}m •{" "}
+                  {new Date(session.timestamp).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </Text>
               </View>
-              <Text style={styles.sessionMeta}>
-                {session.durationMinutes}m •{" "}
-                {new Date(session.timestamp).toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </Text>
-            </View>
-          ))}
-        </View>
-      )}
+            ))}
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -636,6 +939,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#0A0A0A",
     paddingHorizontal: 20,
     paddingTop: 68,
+  },
+  scrollContent: {
+    paddingBottom: 28,
   },
   header: {
     flexDirection: "row",
@@ -739,29 +1045,61 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 8,
   },
-  durationScrollContent: {
-    gap: 8,
-    paddingBottom: 12,
+  sliderWrap: {
+    marginBottom: 12,
   },
-  durationChip: {
-    borderWidth: 1,
-    borderColor: "#343434",
+  sliderHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  sliderValue: {
+    color: "#EDEDED",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  sliderHint: {
+    color: "#7E7E7E",
+    fontSize: 11,
+  },
+  sliderTrackTouchArea: {
+    height: 30,
+    justifyContent: "center",
+  },
+  sliderTrack: {
+    height: 6,
+    backgroundColor: "#222222",
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: "#141414",
+    width: "100%",
+    position: "absolute",
   },
-  durationChipActive: {
+  sliderFill: {
+    height: 6,
     backgroundColor: "#EDEDED",
-    borderColor: "#EDEDED",
+    borderRadius: 999,
+    position: "absolute",
+    left: 0,
   },
-  durationChipText: {
-    color: "#B6B6B6",
-    fontSize: 13,
-    fontWeight: "500",
+  sliderThumb: {
+    position: "absolute",
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 2,
+    borderColor: "#111111",
+    top: 6,
+    marginLeft: -9,
   },
-  durationChipTextActive: {
-    color: "#0A0A0A",
+  sliderRangeRow: {
+    marginTop: 6,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  sliderRangeText: {
+    color: "#666666",
+    fontSize: 11,
   },
   input: {
     backgroundColor: "#151515",
@@ -824,9 +1162,18 @@ const styles = StyleSheet.create({
   },
 
   shapeDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#CFCFCF",
+    alignSelf: "center",
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  shapeLine: {
+    width: 44,
+    height: 2,
+    borderRadius: 1,
     backgroundColor: "#CFCFCF",
     alignSelf: "center",
     marginTop: 6,
@@ -1058,10 +1405,60 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
+  successIndicator: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(76, 175, 80, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: "rgba(76, 175, 80, 0.4)",
+  },
+  successIcon: {
+    fontSize: 32,
+    color: "#4CAF50",
+    fontWeight: "bold",
+  },
+  successTitle: {
+    color: "#FFFFFF",
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+  successTask: {
+    color: "#B3B3B3",
+    fontSize: 15,
+    marginBottom: 12,
+    fontStyle: "italic",
+  },
+  successMessage: {
+    color: "#8BCB8E",
+    fontSize: 13,
+    textAlign: "center",
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  successDismissBtn: {
+    backgroundColor: "#EDEDED",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    minWidth: 120,
+    alignItems: "center",
+  },
+  successDismissBtnText: {
+    color: "#0A0A0A",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+
   completedTaskItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    gap: 12,
+    paddingVertical: 12,
     borderBottomWidth: 0.8,
     borderBottomColor: "rgba(255, 255, 255, 0.04)",
   },
@@ -1072,7 +1469,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(76, 175, 80, 0.15)",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
     borderWidth: 1,
     borderColor: "rgba(76, 175, 80, 0.4)",
   },
@@ -1091,8 +1487,46 @@ const styles = StyleSheet.create({
   completedTaskText: {
     color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "600",
     flex: 1,
+  },
+  completedTaskContent: {
+    flex: 1,
+  },
+  completedTaskTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  completedTaskMeta: {
+    color: "#808080",
+    fontSize: 12,
+    textAlign: "right",
+  },
+
+  swipeRowWrap: {
+    position: "relative",
+    overflow: "hidden",
+  },
+  swipeDeleteAction: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 110,
+    backgroundColor: "rgba(244, 67, 54, 0.18)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(244, 67, 54, 0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  swipeDeleteText: {
+    color: "#F44336",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.2,
   },
 
   summaryRow: {
