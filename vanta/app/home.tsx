@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   AppState,
   AppStateStatus,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,7 +14,13 @@ import {
   Animated,
   Easing,
 } from "react-native";
-import { clearAuthSession, getAuthUser } from "@/services/authStorage";
+import {
+  clearAuthSession,
+  getAuthUser,
+  getSessions,
+  saveSessions,
+  type SessionRecord,
+} from "@/services/authStorage";
 
 function formatTime(totalSeconds: number) {
   const mm = Math.floor(totalSeconds / 60)
@@ -24,6 +31,12 @@ function formatTime(totalSeconds: number) {
 }
 
 const FOCUS_MINUTES_OPTIONS = [5, 10, 15, 20, 25, 30, 40, 50, 60];
+
+interface CompletedTask {
+  name: string;
+  status: "success" | "failed";
+  timestamp: number;
+}
 
 function GrowthShape({ completedCount }: { completedCount: number }) {
   if (completedCount >= 30) {
@@ -57,12 +70,17 @@ export default function Home() {
   const [taskDraft, setTaskDraft] = useState("");
   const [activeTask, setActiveTask] = useState("");
   const [completedCount, setCompletedCount] = useState(0);
+  const [completedTasks, setCompletedTasks] = useState<CompletedTask[]>([]);
 
   const [voidMode, setVoidMode] = useState(false);
   const [focusDurationMinutes, setFocusDurationMinutes] = useState(25);
   const [focusSeconds, setFocusSeconds] = useState(25 * 60);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sessions, setSessions] = useState<SessionRecord[]>([]);
+  const [sessionFailed, setSessionFailed] = useState(false);
+  const [failedSessionTask, setFailedSessionTask] = useState("");
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const voidModeStartTimeRef = useRef<number | null>(null);
 
   const timerOpacity = useRef(new Animated.Value(0)).current;
   const timerScale = useRef(new Animated.Value(0.98)).current;
@@ -72,8 +90,9 @@ export default function Home() {
   useEffect(() => {
     let mounted = true;
 
-    const loadUser = async () => {
+    const loadData = async () => {
       const user = await getAuthUser();
+      const storedSessions = await getSessions();
 
       if (!mounted) return;
 
@@ -84,10 +103,11 @@ export default function Home() {
 
       setName(user.name || "");
       setEmail(user.email);
+      setSessions(storedSessions);
       setLoading(false);
     };
 
-    void loadUser();
+    void loadData();
 
     return () => {
       mounted = false;
@@ -101,8 +121,28 @@ export default function Home() {
       timerOpacity.setValue(0);
       timerScale.setValue(0.98);
       pulseScale.setValue(1);
+
+      if (voidModeStartTimeRef.current !== null && activeTask) {
+        const elapsedSeconds = Math.floor(
+          (Date.now() - voidModeStartTimeRef.current) / 1000,
+        );
+        const isSuccess = elapsedSeconds >= focusSeconds;
+
+        const session: SessionRecord = {
+          id: Date.now().toString(),
+          task: activeTask,
+          durationMinutes: focusDurationMinutes,
+          success: isSuccess,
+          timestamp: Date.now(),
+        };
+
+        setSessions((prev) => [session, ...prev]);
+        voidModeStartTimeRef.current = null;
+      }
       return;
     }
+
+    voidModeStartTimeRef.current = Date.now();
 
     Animated.parallel([
       Animated.timing(timerOpacity, {
@@ -141,7 +181,15 @@ export default function Home() {
       pulseLoopRef.current?.stop();
       pulseLoopRef.current = null;
     };
-  }, [voidMode, timerOpacity, timerScale, pulseScale]);
+  }, [
+    voidMode,
+    timerOpacity,
+    timerScale,
+    pulseScale,
+    activeTask,
+    focusDurationMinutes,
+    focusSeconds,
+  ]);
 
   useEffect(() => {
     if (!voidMode) return;
@@ -164,6 +212,10 @@ export default function Home() {
   }, [focusDurationMinutes, voidMode]);
 
   useEffect(() => {
+    void saveSessions(sessions);
+  }, [sessions]);
+
+  useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
       const prev = appStateRef.current;
       appStateRef.current = nextState;
@@ -173,13 +225,29 @@ export default function Home() {
         (nextState === "inactive" || nextState === "background");
 
       if (voidMode && leftApp) {
+        if (voidModeStartTimeRef.current !== null && activeTask) {
+          const elapsedSeconds = Math.floor(
+            (Date.now() - voidModeStartTimeRef.current) / 1000,
+          );
+          const isSuccess = elapsedSeconds >= focusSeconds;
+
+          const session: SessionRecord = {
+            id: Date.now().toString(),
+            task: activeTask,
+            durationMinutes: focusDurationMinutes,
+            success: isSuccess,
+            timestamp: Date.now(),
+          };
+
+          setSessions((prev) => [session, ...prev]);
+        }
         setVoidMode(false);
         setFocusSeconds(focusDurationMinutes * 60);
       }
     });
 
     return () => sub.remove();
-  }, [voidMode, focusDurationMinutes]);
+  }, [voidMode, focusDurationMinutes, activeTask, focusSeconds]);
 
   const handleSetTask = () => {
     const value = taskDraft.trim();
@@ -191,9 +259,14 @@ export default function Home() {
   const handleCompleteTask = () => {
     if (!activeTask) return;
     setCompletedCount((prev) => prev + 1);
+    setCompletedTasks((prev) => [
+      { name: activeTask, status: "success", timestamp: Date.now() },
+      ...prev,
+    ]);
     setActiveTask("");
     setVoidMode(false);
     setFocusSeconds(focusDurationMinutes * 60);
+    voidModeStartTimeRef.current = null;
   };
 
   const handleEnterVoidMode = () => {
@@ -203,8 +276,22 @@ export default function Home() {
   };
 
   const handleExitVoidMode = () => {
+    if (focusSeconds > 0) {
+      setSessionFailed(true);
+      setFailedSessionTask(activeTask);
+      setCompletedTasks((prev) => [
+        { name: activeTask, status: "failed", timestamp: Date.now() },
+        ...prev,
+      ]);
+    }
     setVoidMode(false);
     setFocusSeconds(focusDurationMinutes * 60);
+    voidModeStartTimeRef.current = null;
+  };
+
+  const dismissFailedSession = () => {
+    setSessionFailed(false);
+    setFailedSessionTask("");
   };
 
   const handleSignOut = async () => {
@@ -218,6 +305,36 @@ export default function Home() {
       <View style={styles.container}>
         <ActivityIndicator size="small" color="#8A8A8A" />
       </View>
+    );
+  }
+
+  if (sessionFailed) {
+    return (
+      <Modal
+        visible={sessionFailed}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={dismissFailedSession}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.failureIndicator}>
+              <Text style={styles.failureIcon}>✕</Text>
+            </View>
+            <Text style={styles.failureTitle}>Session Failed</Text>
+            <Text style={styles.failureTask}>{`"${failedSessionTask}"`}</Text>
+            <Text style={styles.failureMessage}>
+              You exited before completing the full duration.
+            </Text>
+            <TouchableOpacity
+              style={styles.failureDismissBtn}
+              onPress={dismissFailedSession}
+            >
+              <Text style={styles.failureDismissBtnText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     );
   }
 
@@ -366,6 +483,73 @@ export default function Home() {
           Day 1: dot · Day 5: line · Day 30: form
         </Text>
       </View>
+
+      {completedTasks.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Completed Tasks</Text>
+          {completedTasks.slice(0, 8).map((task, idx) => (
+            <View key={`${task.name}-${idx}`} style={styles.completedTaskItem}>
+              <View
+                style={[
+                  styles.completedTaskBadge,
+                  task.status === "failed" && styles.completedTaskBadgeFailed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.completedTaskIcon,
+                    task.status === "failed" && styles.completedTaskIconFailed,
+                  ]}
+                >
+                  {task.status === "success" ? "✓" : "✕"}
+                </Text>
+              </View>
+              <Text style={styles.completedTaskText}>{task.name}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {sessions.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Session History</Text>
+          {sessions.slice(0, 5).map((session) => (
+            <View key={session.id} style={styles.sessionItem}>
+              <View style={styles.sessionHeader}>
+                <Text style={styles.sessionTask}>{session.task}</Text>
+                <View
+                  style={[
+                    styles.sessionBadge,
+                    session.success
+                      ? styles.sessionBadgeSuccess
+                      : styles.sessionBadgeFail,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.sessionBadgeText,
+                      session.success
+                        ? styles.sessionBadgeTextSuccess
+                        : styles.sessionBadgeTextFail,
+                    ]}
+                  >
+                    {session.success ? "✓" : "✕"}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.sessionMeta}>
+                {session.durationMinutes}m •{" "}
+                {new Date(session.timestamp).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -682,5 +866,156 @@ const styles = StyleSheet.create({
   voidExitText: {
     color: "#BFBFBF",
     fontSize: 14,
+  },
+
+  sessionItem: {
+    paddingVertical: 10,
+    borderBottomWidth: 0.8,
+    borderBottomColor: "rgba(255,255,255,0.04)",
+  },
+  sessionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  sessionTask: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "500",
+    flex: 1,
+  },
+  sessionBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 8,
+  },
+  sessionBadgeSuccess: {
+    backgroundColor: "rgba(76, 175, 80, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(76, 175, 80, 0.4)",
+  },
+  sessionBadgeFail: {
+    backgroundColor: "rgba(244, 67, 54, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(244, 67, 54, 0.4)",
+  },
+  sessionBadgeText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  sessionBadgeTextSuccess: {
+    color: "#4CAF50",
+  },
+  sessionBadgeTextFail: {
+    color: "#F44336",
+  },
+  sessionMeta: {
+    color: "#7F7F7F",
+    fontSize: 12,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "#0F0F10",
+    borderRadius: 20,
+    padding: 28,
+    width: "85%",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  failureIndicator: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(244, 67, 54, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: "rgba(244, 67, 54, 0.4)",
+  },
+  failureIcon: {
+    fontSize: 32,
+    color: "#F44336",
+    fontWeight: "bold",
+  },
+  failureTitle: {
+    color: "#FFFFFF",
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+  failureTask: {
+    color: "#B3B3B3",
+    fontSize: 15,
+    marginBottom: 12,
+    fontStyle: "italic",
+  },
+  failureMessage: {
+    color: "#7F7F7F",
+    fontSize: 13,
+    textAlign: "center",
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  failureDismissBtn: {
+    backgroundColor: "#EDEDED",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    minWidth: 120,
+    alignItems: "center",
+  },
+  failureDismissBtnText: {
+    color: "#0A0A0A",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+
+  completedTaskItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 0.8,
+    borderBottomColor: "rgba(255, 255, 255, 0.04)",
+  },
+  completedTaskBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(76, 175, 80, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: "rgba(76, 175, 80, 0.4)",
+  },
+  completedTaskBadgeFailed: {
+    backgroundColor: "rgba(244, 67, 54, 0.15)",
+    borderColor: "rgba(244, 67, 54, 0.4)",
+  },
+  completedTaskIcon: {
+    fontSize: 16,
+    color: "#4CAF50",
+    fontWeight: "bold",
+  },
+  completedTaskIconFailed: {
+    color: "#F44336",
+  },
+  completedTaskText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "500",
+    flex: 1,
   },
 });
