@@ -149,9 +149,11 @@ function CompletedTaskRowContent({ task }: { task: CompletedTask }) {
 function FailedTaskSwipeRow({
   task,
   onDelete,
+  onSwipeStateChange,
 }: {
   task: CompletedTask;
   onDelete: () => void;
+  onSwipeStateChange?: (isActive: boolean) => void;
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const deleteActionOpacity = translateX.interpolate({
@@ -176,13 +178,19 @@ function FailedTaskSwipeRow({
 
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) =>
-        Math.abs(gestureState.dx) > 6,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        const isHorizontal = Math.abs(gestureState.dx) > 6;
+        if (isHorizontal) {
+          onSwipeStateChange?.(true);
+        }
+        return isHorizontal;
+      },
       onPanResponderMove: (_, gestureState: PanResponderGestureState) => {
         const x = Math.min(0, Math.max(-120, gestureState.dx));
         translateX.setValue(x);
       },
       onPanResponderRelease: (_, gestureState: PanResponderGestureState) => {
+        onSwipeStateChange?.(false);
         if (gestureState.dx <= -72) {
           Animated.timing(translateX, {
             toValue: -220,
@@ -197,7 +205,10 @@ function FailedTaskSwipeRow({
         }
         resetPosition();
       },
-      onPanResponderTerminate: resetPosition,
+      onPanResponderTerminate: () => {
+        onSwipeStateChange?.(false);
+        resetPosition();
+      },
     }),
   ).current;
 
@@ -317,6 +328,7 @@ export default function Home() {
   const [successSessionMinutes, setSuccessSessionMinutes] = useState(0);
   const [streak, setStreak] = useState(0);
   const [dailyFocusMinutes, setDailyFocusMinutes] = useState(0);
+  const [isSwipingTask, setIsSwipingTask] = useState(false);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const voidModeStartTimeRef = useRef<number | null>(null);
   const hasHydratedRef = useRef(false);
@@ -738,6 +750,7 @@ export default function Home() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        scrollEnabled={!isSwipingTask}
       >
         <View style={styles.header}>
           <Text style={styles.brand}>Vanta</Text>
@@ -864,26 +877,18 @@ export default function Home() {
                 ],
               }}
             >
-              {completedTasks
-                .slice(0, 8)
-                .map((task, idx) =>
-                  task.status === "failed" ? (
-                    <FailedTaskSwipeRow
-                      key={`${task.name}-${task.timestamp}-${idx}`}
-                      task={task}
-                      onDelete={() =>
-                        setCompletedTasks((prev) =>
-                          prev.filter((_, rowIdx) => rowIdx !== idx),
-                        )
-                      }
-                    />
-                  ) : (
-                    <CompletedTaskRowContent
-                      key={`${task.name}-${task.timestamp}-${idx}`}
-                      task={task}
-                    />
-                  ),
-                )}
+              {completedTasks.slice(0, 8).map((task, idx) => (
+                <FailedTaskSwipeRow
+                  key={`${task.name}-${task.timestamp}-${idx}`}
+                  task={task}
+                  onDelete={() =>
+                    setCompletedTasks((prev) =>
+                      prev.filter((_, rowIdx) => rowIdx !== idx),
+                    )
+                  }
+                  onSwipeStateChange={setIsSwipingTask}
+                />
+              ))}
             </Animated.View>
           </View>
         )}
