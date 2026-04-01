@@ -40,81 +40,8 @@ function formatTime(totalSeconds: number) {
 
 const FOCUS_MIN_MINUTES = 1;
 const FOCUS_MAX_MINUTES = 60;
-const FOCUS_STEP_MINUTES = 1;
 
 type CompletedTask = CompletedTaskRecord;
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function FocusDurationSlider({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (minutes: number) => void;
-}) {
-  const [trackWidth, setTrackWidth] = useState(0);
-  const [localValue, setLocalValue] = useState(value);
-
-  useEffect(() => {
-    setLocalValue(value);
-  }, [value]);
-
-  const percent =
-    (localValue - FOCUS_MIN_MINUTES) / (FOCUS_MAX_MINUTES - FOCUS_MIN_MINUTES);
-
-  const updateFromX = (x: number) => {
-    if (trackWidth <= 0) return localValue;
-
-    const clampedX = clamp(x, 0, trackWidth);
-    const rawValue =
-      FOCUS_MIN_MINUTES +
-      (clampedX / trackWidth) * (FOCUS_MAX_MINUTES - FOCUS_MIN_MINUTES);
-    const stepped =
-      Math.round(rawValue / FOCUS_STEP_MINUTES) * FOCUS_STEP_MINUTES;
-    return clamp(stepped, FOCUS_MIN_MINUTES, FOCUS_MAX_MINUTES);
-  };
-
-  return (
-    <View style={styles.sliderWrap}>
-      <View style={styles.sliderHeaderRow}>
-        <Text style={styles.sliderValue}>{value}m</Text>
-        <Text style={styles.sliderHint}>Tap or slide to adjust</Text>
-      </View>
-
-      <View
-        style={styles.sliderTrackTouchArea}
-        onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
-        onResponderGrant={(event) => {
-          const next = updateFromX(event.nativeEvent.locationX);
-          setLocalValue(next);
-        }}
-        onResponderMove={(event) => {
-          const next = updateFromX(event.nativeEvent.locationX);
-          setLocalValue((prev) => (prev === next ? prev : next));
-        }}
-        onResponderRelease={(event) => {
-          const next = updateFromX(event.nativeEvent.locationX);
-          setLocalValue(next);
-          onChange(next);
-        }}
-      >
-        <View style={styles.sliderTrack} />
-        <View style={[styles.sliderFill, { width: `${percent * 100}%` }]} />
-        <View style={[styles.sliderThumb, { left: `${percent * 100}%` }]} />
-      </View>
-
-      <View style={styles.sliderRangeRow}>
-        <Text style={styles.sliderRangeText}>{FOCUS_MIN_MINUTES}m</Text>
-        <Text style={styles.sliderRangeText}>{FOCUS_MAX_MINUTES}m</Text>
-      </View>
-    </View>
-  );
-}
 
 function CompletedTaskRowContent({ task }: { task: CompletedTask }) {
   return (
@@ -789,10 +716,25 @@ export default function Home() {
               <Text style={styles.activeTask}>{activeTask}</Text>
 
               <Text style={styles.durationLabel}>Focus duration</Text>
-              <FocusDurationSlider
-                value={focusDurationMinutes}
-                onChange={setFocusDurationMinutes}
-              />
+              <View style={styles.durationInputWrap}>
+                <ScaleButton
+                  style={styles.durationBtn}
+                  onPress={() =>
+                    setFocusDurationMinutes((prev) => Math.max(1, prev - 1))
+                  }
+                >
+                  <Text style={styles.durationBtnText}>−</Text>
+                </ScaleButton>
+                <Text style={styles.durationValue}>{focusDurationMinutes}m</Text>
+                <ScaleButton
+                  style={styles.durationBtn}
+                  onPress={() =>
+                    setFocusDurationMinutes((prev) => Math.min(60, prev + 1))
+                  }
+                >
+                  <Text style={styles.durationBtnText}>+</Text>
+                </ScaleButton>
+              </View>
 
               <View style={styles.row}>
                 <ScaleButton
@@ -1564,6 +1506,188 @@ const styles = StyleSheet.create({
   summaryMessage: {
     color: "#B1B1B1",
     fontSize: 13,
+    textAlign: "center",
+  },
+
+  durationPickerButton: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(76, 175, 80, 0.5)",
+    backgroundColor: "rgba(76, 175, 80, 0.08)",
+    paddingVertical: 12,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  durationPickerButtonText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    justifyContent: "flex-end",
+  },
+  pickerContent: {
+    backgroundColor: "#0F0F10",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  pickerHeader: {
+    marginBottom: 18,
+  },
+  pickerTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+
+  presetsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 18,
+  },
+  presetButton: {
+    flex: 0.22,
+    aspectRatio: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  presetButtonActive: {
+    borderColor: "rgba(76, 175, 80, 0.6)",
+    backgroundColor: "rgba(76, 175, 80, 0.15)",
+  },
+  presetButtonText: {
+    color: "#B1B1B1",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  presetButtonTextActive: {
+    color: "#4CAF50",
+  },
+
+  pickerCustomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 18,
+    gap: 12,
+  },
+  pickerCustomLabel: {
+    color: "#8C8C8C",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  customInputWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  customButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(76, 175, 80, 0.4)",
+    backgroundColor: "rgba(76, 175, 80, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  customButtonText: {
+    color: "#4CAF50",
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  customValue: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
+    minWidth: 40,
+    textAlign: "center",
+  },
+
+  pickerButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  pickerCancelBtn: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pickerCancelBtnText: {
+    color: "#B1B1B1",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  pickerConfirmBtn: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: "rgba(76, 175, 80, 0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(76, 175, 80, 0.5)",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pickerConfirmBtnText: {
+    color: "#4CAF50",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  buttonWithLabel: {
+    flex: 1,
+    alignItems: "center",
+    gap: 6,
+  },
+  buttonLabel: {
+    color: "#B1B1B1",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  durationInputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  durationBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(76, 175, 80, 0.4)",
+    backgroundColor: "rgba(76, 175, 80, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  durationBtnText: {
+    color: "#4CAF50",
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  durationValue: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "700",
+    minWidth: 50,
     textAlign: "center",
   },
 });
