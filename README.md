@@ -65,6 +65,7 @@ vanta/
 
 ## Backend structure
 
+```bash
 backend/
 ├── src/
 │   ├── models/
@@ -72,6 +73,7 @@ backend/
 │   └── server.js
 ├── .env
 └── package.json
+```
 
 # Main screens
 
