@@ -52,12 +52,14 @@ root
 
 ## Frontend structure
 
+'''
 vanta/
 ├── app/         # screens and routes
 ├── services/    # API calls, auth storage, onboarding storage
 ├── app.json
 ├── package.json
 └── tsconfig.json
+'''
 
 ## Backend structure
 
