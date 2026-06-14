@@ -96,8 +96,10 @@ The app uses a custom backend with MongoDB.
 
 ## 1. Clone repository
 
+```bash
 git clone <https://github.com/ethic8L/vanta.git>
 cd vanta
+```
 
 ## 1. Set up MongoDB
 
@@ -109,35 +111,38 @@ Option A: MongoDB Atlas
 2. Create a database user
 3. Allow your IP in Network Access
 4. Copy your connection string, for example:
+
+```bash
 mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/vanta?retryWrites=true&w=majority
-
+```
 Option B: Local MongoDB
-
+```bash
 mongodb://127.0.0.1:27017/vanta
+```
 
 ## 3. Configure backend
 
 Go to backend folder:
 
-'''
+```bash
 cd backend
 npm install
-'''
+```
 
 Create .env file based on .env.example:
 
-'''
+```bash
 PORT=4000
 MONGODB_URI=your_mongodb_connection_string
 JWT_SECRET=your_long_random_secret
 CLIENT_URL=[localhost](http://localhost:8081)
-'''
+```
 
 Start backend:
 
-'''
+```bash
 npm run dev
-'''
+```
 
 ### Backend endpoints
 
@@ -149,36 +154,36 @@ npm run dev
 
 Open a new terminal and go to mobile app folder:
 
-'''
+```bash
 cd vanta
 npm install
-'''
+```
 
 create env file:
 
-'''
+```bash
 EXPO_PUBLIC_API_URL=[localhost](http://localhost:4000)
-'''
+```
 
 start expo: 
 
-'''
+```bash
 npm start
-'''
+```
 
 # Important for testing on a real device
 
 If your phone is on the same Wi-Fi network as your laptop, replace localhost with your computer's LAN IP:
 
-'''
+```bash
 EXPO_PUBLIC_API_URL=[192.168.x.x](http://192.168.x.x:4000)
-'''
+```
 
 Example:
 
-'''
+```bash
 EXPO_PUBLIC_API_URL=[192.168.0.15](http://192.168.0.15:4000)
-'''
+```
 
 # Quick test scenario
 
