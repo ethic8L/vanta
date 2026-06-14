@@ -24,75 +24,209 @@ The user starts a focus session for a chosen task. If the session is completed, 
 
 ## Tech stack
 
+### Mobile app
 
+- React Native
+- Expo
+- Expo Router
+- TypeScript
 
-## 1) Set up MongoDB
+### Backend
 
-You can use either local MongoDB or MongoDB Atlas.
+- Node.js
+- Express
+- MongoDB
+- JWT authentication
 
-### Option A: MongoDB Atlas (recommended)
+### Other tools / libraries
 
-1. Create a free cluster on MongoDB Atlas.
-2. Create a DB user (username/password).
-3. In Network Access, allow your current IP (or temporarily `0.0.0.0/0` for testing).
+- AsyncStorage
+- Expo Haptics / Vibration
+- ESLint
+
+# Project structure
+
+root
+├── vanta/       # Expo mobile application
+└── backend/     # Node.js + Express + MongoDB API
+
+## Frontend structure
+
+vanta/
+├── app/         # screens and routes
+├── services/    # API calls, auth storage, onboarding storage
+├── app.json
+├── package.json
+└── tsconfig.json
+
+## Backend structure
+
+backend/
+├── src/
+│   ├── models/
+│   ├── routes/
+│   └── server.js
+├── .env
+└── package.json
+
+# Main screens
+
+- Splash screen - initial loading and redirect logic
+- Onboarding - first-time user experience
+- Auth screen - login / register
+- Home screen - focus session setup, streak, daily summary, session history
+- Menu  - signed-in user details and logout
+
+# How authentication works
+
+The app uses a custom backend with MongoDB.
+- Users can register and log in
+- Backend returns an auth token
+- The mobile app stores auth state locally
+- Logged-in users are redirected to the home screen
+- Users can sign out from the menu
+
+# Setup
+
+## 1. Clone repository
+
+git clone <https://github.com/ethic8L/vanta.git>
+cd vanta
+
+## 1. Set up MongoDB
+
+You can use either MongoDB Atlas or local MongoDB.
+
+Option A: MongoDB Atlas
+
+1. Create a free cluster on MongoDB Atlas
+2. Create a database user
+3. Allow your IP in Network Access
 4. Copy your connection string, for example:
+mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/vanta?retryWrites=true&w=majority
 
-   `mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/vanta?retryWrites=true&w=majority`
+Option B: Local MongoDB
 
-### Option B: local MongoDB
+mongodb://127.0.0.1:27017/vanta
 
-Use:
+## 3. Configure backend
 
-`mongodb://127.0.0.1:27017/vanta`
+Go to backend folder:
 
-## 2) Configure backend
+'''
+cd backend
+npm install
+'''
 
-From repo root:
+Create .env file based on .env.example:
 
-1. Go to [backend](backend)
-2. Install dependencies: `npm install`
-3. Create `.env` from [.env.example](backend/.env.example)
-
-Example `.env`:
-
-```
+'''
 PORT=4000
-MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/vanta?retryWrites=true&w=majority
-JWT_SECRET=use_a_long_random_secret_here
-CLIENT_URL=http://localhost:8081
-```
+MONGODB_URI=your_mongodb_connection_string
+JWT_SECRET=your_long_random_secret
+CLIENT_URL=[localhost](http://localhost:8081)
+'''
 
-4. Start API in dev mode: `npm run dev`
+Start backend:
 
-Backend endpoints:
+'''
+npm run dev
+'''
 
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `GET /api/health`
+### Backend endpoints
 
-## 3) Configure mobile app
+- POST /api/auth/register
+- POST /api/auth/login
+- GET /api/health
 
-In [vanta](vanta), create `.env` and set:
+## 4. Configure mobile app
 
-```
-EXPO_PUBLIC_API_URL=http://localhost:4000
-```
+Open a new terminal and go to mobile app folder:
 
-Then run app:
+'''
+cd vanta
+npm install
+'''
 
-`npm start`
+create env file:
 
-### Important for real device testing
+'''
+EXPO_PUBLIC_API_URL=[localhost](http://localhost:4000)
+'''
 
-If your phone is on the same Wi‑Fi as your laptop, replace `localhost` with your laptop LAN IP:
+start expo: 
 
-`EXPO_PUBLIC_API_URL=http://192.168.x.x:4000`
+'''
+npm start
+'''
 
-## 4) Quick test
+# Important for testing on a real device
 
-1. Open app, complete onboarding, open auth screen.
-2. Register a new account.
-3. Confirm you are redirected to home.
-4. Sign out and sign in again.
+If your phone is on the same Wi-Fi network as your laptop, replace localhost with your computer's LAN IP:
 
-If auth fails, check backend logs and verify `MONGODB_URI` + `EXPO_PUBLIC_API_URL`.
+'''
+EXPO_PUBLIC_API_URL=[192.168.x.x](http://192.168.x.x:4000)
+'''
+
+Example:
+
+'''
+EXPO_PUBLIC_API_URL=[192.168.0.15](http://192.168.0.15:4000)
+'''
+
+# Quick test scenario
+
+1. Start backend
+2. Start Expo app
+4. Open auth screen
+5. Register a new account
+6. Sign in
+7. Create and complete a focus session
+8. Check streak and session history
+9. Sign out
+10. Sign in again
+
+# Implemented app logic
+
+## Focus session
+- The user enters a task name
+- Starts a focus session
+- If the session is completed, it is saved as successful
+- If the user leaves early, it is saved as failed
+  
+## Streak system
+- Successful sessions contribute to user progress
+- The home screen shows completed sessions and streak information
+
+## Productivity stats
+- Daily focused time is displayed on the main screen
+- Session history remains available after app restart
+  
+## Native/mobile features used
+- Haptic feedback / vibration for important user actions
+- Local storage for onboarding / auth-related persistence
+  
+## Security
+
+- Sensitive backend configuration is stored in .env
+- Secrets should never be committed to Git
+- JWT is used for authentication
+- MongoDB connection string is stored outside source code
+  
+## Known limitations
+- Backend must be running for authentication to work
+- Real device testing requires proper LAN IP configuration
+- Internet connection is required for backend-based auth features
+  
+## Future improvements
+- More detailed statistics
+- Push notifications for reminders
+- Offline session sync
+- Better analytics and charts
+- More advanced focus timer customization
+  
+# Screenshots
+
+
+# License
+MIT
