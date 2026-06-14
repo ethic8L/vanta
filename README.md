@@ -46,20 +46,22 @@ The user starts a focus session for a chosen task. If the session is completed, 
 
 # Project structure
 
+```bash
 root
 ├── vanta/       # Expo mobile application
 └── backend/     # Node.js + Express + MongoDB API
+```
 
 ## Frontend structure
 
-'''
+```bash
 vanta/
 ├── app/         # screens and routes
 ├── services/    # API calls, auth storage, onboarding storage
 ├── app.json
 ├── package.json
 └── tsconfig.json
-'''
+```
 
 ## Backend structure
 
