@@ -1,11 +1,30 @@
-# vanta
+# Vanta
 
 Minimalistic productivity app built with React Native + Expo.
+The app helps users stay focused on one task at a time, track completed and failed focus sessions, and build a productivity streak over time.
 
-## Project structure
+## Features
 
-- [vanta](vanta) → Expo mobile app
-- [backend](backend) → Node.js + Express + MongoDB auth API
+- User registration and login
+- Persistent authentication with backend
+- Focus session creation
+- Success / fail session logic
+- Daily focus time summary
+- Streak tracking
+- Session history
+- Swipe-to-delete interactions
+- Haptic feedback / vibration on important actions
+- Logout flow
+- Onboarding and splash screen
+
+## Project idea
+
+Vanta is based on a simple rule: one task at a time.
+The user starts a focus session for a chosen task. If the session is completed, it is marked as successful and contributes to the user's streak. If the user leaves early or breaks focus, the session is marked as failed. The app keeps a history of sessions and shows daily productivity statistics.
+
+## Tech stack
+
+
 
 ## 1) Set up MongoDB
 
