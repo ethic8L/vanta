@@ -238,6 +238,17 @@ EXPO_PUBLIC_API_URL=[192.168.0.15](http://192.168.0.15:4000)
   
 # Screenshots
 
+<img width="1179" height="2379" alt="IMG_4274" src="https://github.com/user-attachments/assets/d1eaa9d1-eb3b-439f-b5a4-0a72d0610282" />
+
+
+<img width="1179" height="2282" alt="IMG_4276" src="https://github.com/user-attachments/assets/7681edf7-fc45-421e-95fa-217c3e0e1b61" />
+
+<img width="1179" height="2373" alt="IMG_4279" src="https://github.com/user-attachments/assets/07cdb4d3-7585-411f-b0db-0afedaf01e3c" />
+
+<img width="1179" height="2416" alt="IMG_4280" src="https://github.com/user-attachments/assets/8310198b-7e29-4934-abc7-1b5edea53ee0" />
+
+
+
 
 # License
 MIT
