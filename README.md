@@ -238,13 +238,15 @@ EXPO_PUBLIC_API_URL=[192.168.0.15](http://192.168.0.15:4000)
   
 # Screenshots
 
-<img src="https://github.com/user-attachments/assets/d1eaa9d1-eb3b-439f-b5a4-0a72d0610282" alt="IMG_4274" width="350" />
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/d1eaa9d1-eb3b-439f-b5a4-0a72d0610282" alt="IMG_4274" width="300" />
+  <img src="https://github.com/user-attachments/assets/7681edf7-fc45-421e-95fa-217c3e0e1b61" alt="IMG_4276" width="300" />
+</p>
 
-<img src="https://github.com/user-attachments/assets/7681edf7-fc45-421e-95fa-217c3e0e1b61" alt="IMG_4276" width="350" />
-
-<img src="https://github.com/user-attachments/assets/07cdb4d3-7585-411f-b0db-0afedaf01e3c" alt="IMG_4279" width="350" />
-
-<img src="https://github.com/user-attachments/assets/8310198b-7e29-4934-abc7-1b5edea53ee0" alt="IMG_4280" width="350" />
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/07cdb4d3-7585-411f-b0db-0afedaf01e3c" alt="IMG_4279" width="300" />
+  <img src="https://github.com/user-attachments/assets/8310198b-7e29-4934-abc7-1b5edea53ee0" alt="IMG_4280" width="300" />
+</p>
 
 
 
